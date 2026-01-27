@@ -6,20 +6,35 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Play, Square, Activity, AlertCircle } from "lucide-react";
 
-export default function TrafficStream() {
+interface TrafficStreamProps {
+  videoSource?: string;
+  targetClasses?: string[];
+}
+
+export default function TrafficStream({ videoSource, targetClasses }: TrafficStreamProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const pcRef = useRef<RTCPeerConnection | null>(null);
   const [isStreaming, setIsStreaming] = useState(false);
   const [status, setStatus] = useState("Ready");
   const [error, setError] = useState<string | null>(null);
+  
+  // Ref to keep track if we are currently negotiating to avoid race conditions if source changes rapidly
+  const isNegotiating = useRef(false);
 
   const startStream = async () => {
+    if (isNegotiating.current) return;
+    isNegotiating.current = true;
+    
     setIsStreaming(true);
     setStatus("Connecting...");
     setError(null);
+    
+    // Close existing connection if any
+    if (pcRef.current) {
+        pcRef.current.close();
+    }
 
     const config: RTCConfiguration = {
-      sdpSemantics: "unified-plan",
       iceServers: [{ urls: ["stun:stun.l.google.com:19302"] }],
     };
 
@@ -71,6 +86,8 @@ export default function TrafficStream() {
         body: JSON.stringify({
           sdp: pc.localDescription?.sdp,
           type: pc.localDescription?.type,
+          video_source: videoSource,
+          target_classes: targetClasses,
         }),
       });
 
@@ -85,6 +102,8 @@ export default function TrafficStream() {
       setError(err.message || "Failed to start stream");
       setStatus("Error");
       stopStream();
+    } finally {
+      isNegotiating.current = false;
     }
   };
 
