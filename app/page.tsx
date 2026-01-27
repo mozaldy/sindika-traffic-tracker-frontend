@@ -4,6 +4,7 @@ import { useState } from "react";
 import TrafficStream from "@/components/TrafficStream";
 import { VideoSelector } from "@/components/VideoSelector";
 import { ClassSelector } from "@/components/ClassSelector";
+import { TrafficLog } from "@/components/TrafficLog";
 
 export default function Home() {
   const [videoSource, setVideoSource] = useState<string>("");
@@ -37,6 +38,8 @@ export default function Home() {
               onChange={setTargetClasses}
             />
         </div>
+
+        <TrafficLog />
         
         <div className="text-center text-sm text-zinc-500">
            Powered by RF-DETR & WebSocket
