@@ -152,11 +152,17 @@ export function TrafficLog() {
                                             </span>
                                         </TableCell>
                                         <TableCell>
-                                            <div className="flex items-center gap-2" title={event.direction_symbol || ""}>
-                                                <ArrowUp 
-                                                    className="h-4 w-4 text-zinc-500" 
-                                                    style={{ transform: `rotate(${event.direction_deg}deg)` }}
-                                                />
+                                            <div className="flex items-center gap-2" title={`Angle: ${event.direction_deg?.toFixed(0)}°`}>
+                                                {event.direction_symbol && event.direction_symbol !== "?" ? (
+                                                     <span className="text-lg font-bold text-zinc-700 dark:text-zinc-300">
+                                                        {event.direction_symbol}
+                                                     </span>
+                                                ) : (
+                                                    <ArrowUp 
+                                                        className="h-4 w-4 text-zinc-500" 
+                                                        style={{ transform: `rotate(${event.direction_deg || 0}deg)` }}
+                                                    />
+                                                )}
                                                 <span className="text-xs text-zinc-500">
                                                     {typeof event.direction_deg === 'number' ? event.direction_deg.toFixed(0) : '0'}°
                                                 </span>
