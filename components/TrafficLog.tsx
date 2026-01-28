@@ -2,7 +2,7 @@ import React, { useEffect, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Trash2, RefreshCw, Car, X, ArrowUp } from "lucide-react";
+import { Trash2, RefreshCw, Car, X } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 
 interface TrafficEvent {
@@ -153,16 +153,9 @@ export function TrafficLog() {
                                         </TableCell>
                                         <TableCell>
                                             <div className="flex items-center gap-2" title={`Angle: ${event.direction_deg?.toFixed(0)}°`}>
-                                                {event.direction_symbol && event.direction_symbol !== "?" ? (
-                                                     <span className="text-lg font-bold text-zinc-700 dark:text-zinc-300">
-                                                        {event.direction_symbol}
-                                                     </span>
-                                                ) : (
-                                                    <ArrowUp 
-                                                        className="h-4 w-4 text-zinc-500" 
-                                                        style={{ transform: `rotate(${event.direction_deg || 0}deg)` }}
-                                                    />
-                                                )}
+                                                <span className="text-lg font-bold text-zinc-700 dark:text-zinc-300">
+                                                    {event.direction_symbol || "?"}
+                                                </span>
                                                 <span className="text-xs text-zinc-500">
                                                     {typeof event.direction_deg === 'number' ? event.direction_deg.toFixed(0) : '0'}°
                                                 </span>
