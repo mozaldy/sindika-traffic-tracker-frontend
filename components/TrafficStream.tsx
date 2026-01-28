@@ -7,8 +7,8 @@ import { Badge } from "@/components/ui/badge";
 import { Play, Square, Activity, AlertCircle } from "lucide-react";
 import dynamic from "next/dynamic";
 
-const LineConfig = dynamic(
-  () => import('./LineConfig').then((mod) => mod.LineConfig),
+const ZoneConfig = dynamic(
+  () => import('./ZoneConfig').then((mod) => mod.ZoneConfig),
   { ssr: false }
 );
 
@@ -145,42 +145,50 @@ export default function TrafficStream({ videoSource, targetClasses }: TrafficStr
     };
   }, []);
 
-  // State for line configuration
-  const [lineConfig, setLineConfig] = useState<any>(null); // { line1: [], line2: [], distance: 5 }
+  // State for ZONE configuration
+  // zone is [x1, y1, x2, y2, x3, y3, x4, y4]
+  const [zoneConfig, setZoneConfig] = useState<any>(null); 
   
   // Initialize config when showing overlay if not already set
   useEffect(() => {
-      if (showConfig && !lineConfig && dimensions.width > 0) {
-          const width = dimensions.width;
-          const height = dimensions.height;
-          setLineConfig({
-              line1: [width * 0.2, height * 0.4, width * 0.8, height * 0.4],
-              line2: [width * 0.2, height * 0.7, width * 0.8, height * 0.7],
+      if (showConfig && !zoneConfig && dimensions.width > 0) {
+          const w = dimensions.width;
+          const h = dimensions.height;
+          // Default rect in center
+          setZoneConfig({
+              points: [
+                  w * 0.3, h * 0.3, // TL
+                  w * 0.7, h * 0.3, // TR
+                  w * 0.7, h * 0.7, // BR
+                  w * 0.3, h * 0.7  // BL
+              ],
               distance: 5
           })
       }
-  }, [showConfig, dimensions, lineConfig]);
+  }, [showConfig, dimensions, zoneConfig]);
 
   // Handle saving config
   const handleSaveConfig = async () => {
-     if (!lineConfig) return;
-     console.log("Saving Config:", lineConfig);
+     if (!zoneConfig) return;
+     console.log("Saving Config:", zoneConfig);
      
-     // Normalize to 0-1 scale for backend independence from resolution
+     // Normalize to 0-1 scale
+     const normalizedPoints = zoneConfig.points.map((p: number, i: number) => 
+         i % 2 === 0 ? p / dimensions.width : p / dimensions.height
+     );
+
      const normalizedConfig = {
-         line1: lineConfig.line1.map((p:number, i:number) => i % 2 === 0 ? p / dimensions.width : p / dimensions.height),
-         line2: lineConfig.line2.map((p:number, i:number) => i % 2 === 0 ? p / dimensions.width : p / dimensions.height),
-         distance: lineConfig.distance
+         zone: normalizedPoints,
+         distance: zoneConfig.distance
      };
 
      try {
-         await fetch("/api/config/lines", {
+         await fetch("/api/config/zone", {
              method: "POST",
              headers: {"Content-Type": "application/json"},
              body: JSON.stringify(normalizedConfig)
          });
          setShowConfig(false);
-         // Ideally toast user here
      } catch(e) {
          console.error(e);
      }
@@ -201,7 +209,7 @@ export default function TrafficStream({ videoSource, targetClasses }: TrafficStr
                     onClick={() => setShowConfig(!showConfig)}
                     disabled={!isStreaming && status !== "Live"}
                 >
-                    {showConfig ? "Hide Config" : "Configure Speed"}
+                    {showConfig ? "Hide Config" : "Configure Zone"}
                 </Button>
                 <Badge
                 variant={
@@ -240,17 +248,16 @@ export default function TrafficStream({ videoSource, targetClasses }: TrafficStr
             )}
             
             {/* Config Overlay */}
-            {showConfig && dimensions.width > 0 && lineConfig && (
-                // @ts-ignore - dynamic import fix if needed, but imported above
-                <LineConfig 
+            {showConfig && dimensions.width > 0 && zoneConfig && (
+                // @ts-ignore
+                <ZoneConfig 
                     width={dimensions.width} 
                     height={dimensions.height}
-                    line1={lineConfig.line1}
-                    line2={lineConfig.line2}
-                    onLineChange={(idx: number, pts: number[]) => {
-                        setLineConfig((prev:any) => ({
+                    points={zoneConfig.points}
+                    onPointsChange={(pts: number[]) => {
+                        setZoneConfig((prev:any) => ({
                             ...prev,
-                            [idx === 1 ? 'line1' : 'line2']: pts
+                            points: pts
                         }))
                     }}
                 />
@@ -280,28 +287,29 @@ export default function TrafficStream({ videoSource, targetClasses }: TrafficStr
         </CardContent>
         </Card>
         
-        {/* Speed Config Controls - Rendered OUTSIDE the video card */}
-        {showConfig && lineConfig && (
+        {/* Speed Config Controls */}
+        {showConfig && zoneConfig && (
              <Card className="p-4 border-zinc-200 dark:border-zinc-800 animate-in fade-in slide-in-from-top-4">
                 <div className="flex items-end gap-4">
                      <div className="flex flex-col gap-2 flex-grow">
-                        <label className="text-sm font-medium">Real World Distance (Meters)</label>
+                        <label className="text-sm font-medium">Approximate Zone Diameter/Crossing Distance (Meters)</label>
                         <input 
                             type="number" 
                             className="flex h-10 w-full rounded-md border border-zinc-200 bg-white px-3 py-2 text-sm ring-offset-white file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-zinc-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-950 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 dark:border-zinc-800 dark:bg-zinc-950 dark:ring-offset-zinc-950 dark:placeholder:text-zinc-400 dark:focus-visible:ring-zinc-300"
-                            value={lineConfig.distance || ''}
+                            value={zoneConfig.distance || ''}
                             onChange={(e) => {
                                 const val = parseFloat(e.target.value);
-                                setLineConfig({...lineConfig, distance: isNaN(val) ? 0 : val})
+                                setZoneConfig({...zoneConfig, distance: isNaN(val) ? 0 : val})
                             }}
                         />
                      </div>
                      <Button onClick={handleSaveConfig} className="bg-green-600 hover:bg-green-700 text-white">
-                         Save Configuration
+                         Save Zone
                      </Button>
                 </div>
                 <p className="text-xs text-zinc-500 mt-2">
-                    Drag the lines (Green = Start, Red = End) on the video. You can drag the endpoints or the line itself.
+                    Drag the corners to cover the intersection. The system will detect when vehicles enter and exit this zone.
+                    Direction is calculated from the Entry point to the Exit point.
                 </p>
              </Card>
         )}

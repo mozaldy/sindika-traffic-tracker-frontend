@@ -11,6 +11,7 @@ interface TrafficEvent {
     class_name: string;
     speed_kmh: number;
     direction_deg: number;
+    direction_symbol?: string;
     image_path: string;
     video_source: string;
 }
@@ -133,7 +134,10 @@ export function TrafficLog() {
                                             </span>
                                         </TableCell>
                                         <TableCell>
-                                            {typeof event.direction_deg === 'number' ? event.direction_deg.toFixed(0) : '0'}°
+                                            <div className="flex flex-col items-center">
+                                                <span className="text-lg font-bold">{event.direction_symbol || "—"}</span>
+                                                <span className="text-xs text-zinc-500">{typeof event.direction_deg === 'number' ? event.direction_deg.toFixed(0) : '0'}°</span>
+                                            </div>
                                         </TableCell>
                                         <TableCell className="text-xs text-zinc-500 max-w-[150px] truncate">
                                             {event.video_source}
