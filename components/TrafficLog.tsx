@@ -2,7 +2,7 @@ import React, { useEffect, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Trash2, RefreshCw, Car } from "lucide-react";
+import { Trash2, RefreshCw, Car, X, ArrowUp } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 
 interface TrafficEvent {
@@ -12,13 +12,16 @@ interface TrafficEvent {
     speed_kmh: number;
     direction_deg: number;
     direction_symbol?: string;
-    image_path: string;
-    video_source: string;
+    crossing_start?: number;
+    crossing_end?: number;
+    image_path?: string;
+    video_source?: string;
 }
 
 export function TrafficLog() {
     const [events, setEvents] = useState<TrafficEvent[]>([]);
     const [loading, setLoading] = useState(false);
+    const [selectedImage, setSelectedImage] = useState<string | null>(null);
 
     const fetchEvents = async () => {
         setLoading(true);
@@ -63,7 +66,15 @@ export function TrafficLog() {
         return new Date(ts * 1000).toLocaleString();
     };
 
+    const formatVidTime = (seconds?: number) => {
+        if (typeof seconds !== 'number') return "-";
+        const m = Math.floor(seconds / 60);
+        const s = Math.floor(seconds % 60);
+        return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+    };
+
     return (
+        <>
         <Card className="w-full max-w-5xl mx-auto mt-8 shadow-lg border-zinc-200 dark:border-zinc-800">
             <CardHeader className="flex flex-row items-center justify-between">
                 <div className="flex items-center gap-2">
@@ -88,6 +99,7 @@ export function TrafficLog() {
                             <TableRow>
                                 <TableHead className="w-[100px]">Capture</TableHead>
                                 <TableHead>Time</TableHead>
+                                <TableHead>Crossing</TableHead>
                                 <TableHead>Class</TableHead>
                                 <TableHead>Speed</TableHead>
                                 <TableHead>Direction</TableHead>
@@ -98,7 +110,7 @@ export function TrafficLog() {
                         <TableBody>
                             {events.length === 0 ? (
                                 <TableRow>
-                                    <TableCell colSpan={7} className="h-24 text-center text-muted-foreground">
+                                    <TableCell colSpan={8} className="h-24 text-center text-muted-foreground">
                                         No traffic events recorded yet.
                                     </TableCell>
                                 </TableRow>
@@ -107,9 +119,12 @@ export function TrafficLog() {
                                     <TableRow key={event.id}>
                                         <TableCell>
                                             {event.image_path ? (
-                                                <div className="h-12 w-16 bg-zinc-100 rounded overflow-hidden relative group cursor-pointer">
+                                                <div 
+                                                    className="h-12 w-16 bg-zinc-100 rounded overflow-hidden relative group cursor-pointer"
+                                                    onClick={() => event.image_path && setSelectedImage(`/captures/${event.image_path.split('/').pop()}`)}
+                                                >
                                                     <img 
-                                                        src={`/captures/${event.image_path.split('/').pop()}`} 
+                                                        src={event.image_path ? `/captures/${event.image_path.split('/').pop()}` : ''} 
                                                         alt={event.class_name}
                                                         className="w-full h-full object-cover transition-transform group-hover:scale-110"
                                                     />
@@ -123,6 +138,9 @@ export function TrafficLog() {
                                         <TableCell className="font-medium text-xs">
                                             {formatTime(event.timestamp)}
                                         </TableCell>
+                                        <TableCell className="text-xs font-mono text-zinc-600 dark:text-zinc-400">
+                                            {formatVidTime(event.crossing_start)} - {formatVidTime(event.crossing_end)}
+                                        </TableCell>
                                         <TableCell>
                                             <Badge variant="outline" className="capitalize">
                                                 {event.class_name}
@@ -134,9 +152,14 @@ export function TrafficLog() {
                                             </span>
                                         </TableCell>
                                         <TableCell>
-                                            <div className="flex flex-col items-center">
-                                                <span className="text-lg font-bold">{event.direction_symbol || "—"}</span>
-                                                <span className="text-xs text-zinc-500">{typeof event.direction_deg === 'number' ? event.direction_deg.toFixed(0) : '0'}°</span>
+                                            <div className="flex items-center gap-2" title={event.direction_symbol || ""}>
+                                                <ArrowUp 
+                                                    className="h-4 w-4 text-zinc-500" 
+                                                    style={{ transform: `rotate(${event.direction_deg}deg)` }}
+                                                />
+                                                <span className="text-xs text-zinc-500">
+                                                    {typeof event.direction_deg === 'number' ? event.direction_deg.toFixed(0) : '0'}°
+                                                </span>
                                             </div>
                                         </TableCell>
                                         <TableCell className="text-xs text-zinc-500 max-w-[150px] truncate">
@@ -160,5 +183,29 @@ export function TrafficLog() {
                 </div>
             </CardContent>
         </Card>
+        {selectedImage && (
+            <div 
+                className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-in fade-in duration-200" 
+                onClick={() => setSelectedImage(null)}
+            >
+                <div className="relative max-w-7xl max-h-[90vh] flex items-center justify-center p-2">
+                    <Button 
+                        variant="ghost" 
+                        size="icon" 
+                        className="absolute -top-12 right-0 md:-top-12 md:-right-12 text-white hover:bg-white/20 hover:text-white rounded-full h-10 w-10"
+                        onClick={() => setSelectedImage(null)}
+                    >
+                        <X className="h-6 w-6" />
+                    </Button>
+                    <img 
+                        src={selectedImage} 
+                        alt="Traffic capture full size" 
+                        className="max-w-full max-h-[85vh] object-contain rounded-lg shadow-2xl"
+                        onClick={(e) => e.stopPropagation()}
+                    />
+                </div>
+            </div>
+        )}
+        </>
     );
 }
