@@ -1,147 +1,175 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React from "react";
 import { Stage, Layer, Line, Circle, Text, Group } from "react-konva";
-
-
-export interface LineCoords {
-  points: number[]; // [x1, y1, x2, y2]
-}
-
-export interface SpeedConfig {
-  line1: LineCoords;
-  line2: LineCoords;
-  distance: number;
-}
 
 interface LineConfigProps {
   width: number;
   height: number;
-  line1: number[];
-  line2: number[];
-  onLineChange: (lineIndex: 1 | 2, newPoints: number[]) => void;
+  points: number[]; // [x1, y1, x2, y2, x3, y3, x4, y4] -> Top-Left, Top-Right, Bottom-Right, Bottom-Left
+  onPointsChange: (newPoints: number[]) => void;
+  distance: number;
+  onDistanceChange: (newDistance: number) => void;
 }
 
-const DraggableLine = ({
-  points,
-  color,
-  onChange,
-  label,
-}: {
-  points: number[];
-  color: string;
-  onChange: (pts: number[]) => void;
-  label: string;
-}) => {
-  // We use a dedicated inner group for moving the whole line (Line + Text)
-  // This ensures the endpoints (Circles) and the main container/coordinate system stay clean.
-  const bodyGroupRef = React.useRef<any>(null);
+export function LineConfig({ width, height, points, onPointsChange, distance, onDistanceChange }: LineConfigProps) {
+  
+  const handlePointDrag = (e: any, index: number) => {
+    const node = e.target;
+    // Enforce bounds? Optional. For now just let them drag.
+    const newPoints = [...points];
+    newPoints[index * 2] = node.x();
+    newPoints[index * 2 + 1] = node.y();
+    onPointsChange(newPoints);
+  };
 
   const handleBodyDragEnd = (e: any) => {
     const node = e.target;
     const dx = node.x();
     const dy = node.y();
-
-    // Reset the body group transform immediately
+    
     node.position({ x: 0, y: 0 });
 
-    // Apply the delta to ALL points (creating the move effect)
-    const newPoints = [
-        points[0] + dx,
-        points[1] + dy,
-        points[2] + dx,
-        points[3] + dy
-    ];
-    onChange(newPoints);
+    const newPoints = points.map((val, i) => {
+        return i % 2 === 0 ? val + dx : val + dy;
+    });
+    
+    onPointsChange(newPoints);
   };
 
-  const handlePointDrag = (e: any, index: number) => {
-    // e.target is the Circle.
-    // Since Main Group is ALWAYS at 0,0, node.x()/.y() gives us the exact absolute coordinate
-    // we need for the points array. simpler and safer.
-    const node = e.target;
-    
-    const newPoints = [...points];
-    newPoints[index * 2] = node.x();
-    newPoints[index * 2 + 1] = node.y();
-    
-    onChange(newPoints);
+  // Helper to get edge center for labels
+  const getCenter = (i1: number, i2: number) => {
+      const x = (points[i1 * 2] + points[i2 * 2]) / 2;
+      const y = (points[i1 * 2 + 1] + points[i2 * 2 + 1]) / 2;
+      return { x, y };
   };
 
-  return (
-    <Group>
-      {/* Draggable Body: Line + Text */}
-      <Group
-        draggable
-        onDragEnd={handleBodyDragEnd}
-        ref={bodyGroupRef}
-      >
-          <Line
-            points={points}
-            stroke={color}
-            strokeWidth={4}
-            lineCap="round"
-            lineJoin="round"
-            hitStrokeWidth={20} 
-          />
-          <Text
-            x={(points[0] + points[2]) / 2}
-            y={(points[1] + points[3]) / 2 - 20}
-            text={label}
-            fontSize={16}
-            fill="white"
-            fontStyle="bold"
-            shadowColor="black"
-            shadowBlur={2}
-          />
-      </Group>
+  // We assume:
+  // Edge 0: p0 -> p1 (Top/Start)
+  // Edge 1: p1 -> p2 (Right)
+  // Edge 2: p2 -> p3 (Bottom/End)
+  // Edge 3: p3 -> p0 (Left)
+  const startCenter = getCenter(0, 1);
+  const endCenter = getCenter(3, 2);
 
-      {/* Independent Endpoints */}
-      <Circle
-        x={points[0]}
-        y={points[1]}
-        radius={10}
-        fill={color}
-        draggable
-        onDragMove={(e) => handlePointDrag(e, 0)}
-        // No need for cancelBubble since parent isn't draggable
-        shadowColor="black"
-        shadowBlur={5}
-      />
-      <Circle
-        x={points[2]}
-        y={points[3]}
-        radius={10}
-        fill={color}
-        draggable
-        onDragMove={(e) => handlePointDrag(e, 1)}
-        shadowColor="black"
-        shadowBlur={5}
-      />
-    </Group>
-  );
-};
-
-export function LineConfig({ width, height, line1, line2, onLineChange }: LineConfigProps) {
   return (
     <div className="absolute inset-0 z-50 pointer-events-none">
       <div className="pointer-events-auto absolute inset-0">
         <Stage width={width} height={height}>
           <Layer>
-            <DraggableLine
-              points={line1}
-              color="#00ff00" // Green
-              label="Start Line (A)"
-              onChange={(pts) => onLineChange(1, pts)}
-            />
-            <DraggableLine
-              points={line2}
-              color="#ff0000" // Red
-              label="End Line (B)"
-              onChange={(pts) => onLineChange(2, pts)}
-            />
+            {/* Polygon Body (Draggable) */}
+            <Group draggable onDragEnd={handleBodyDragEnd}>
+                <Line
+                    points={points}
+                    closed
+                    fill="rgba(255, 255, 255, 0.1)"
+                    stroke="white"
+                    strokeWidth={2}
+                    dash={[10, 5]}
+                />
+                
+                {/* Specific Edges Visualization */}
+                {/* Start Line (Green) - P0 to P1 */}
+                <Line 
+                    points={[points[0], points[1], points[2], points[3]]}
+                    stroke="#00ff00"
+                    strokeWidth={4}
+                    lineCap="round"
+                />
+                <Text 
+                    x={startCenter.x} y={startCenter.y - 20} 
+                    text="START" 
+                    fill="#00ff00" 
+                    fontSize={16} 
+                    fontStyle="bold"
+                    shadowColor="black"
+                    shadowBlur={2}
+                />
+
+                {/* End Line (Red) - P3 to P2 (Note: points array is P0..P3. 
+                    P2 is index 2 (4,5), P3 is index 3 (6,7). 
+                    We draw line between P3 and P2.
+                */}
+                <Line 
+                    points={[points[6], points[7], points[4], points[5]]}
+                    stroke="#ff0000"
+                    strokeWidth={4}
+                    lineCap="round"
+                />
+                 <Text 
+                    x={endCenter.x} y={endCenter.y + 10} 
+                    text="END" 
+                    fill="#ff0000" 
+                    fontSize={16} 
+                    fontStyle="bold"
+                    shadowColor="black"
+                    shadowBlur={2}
+                />
+            </Group>
+
+            {/* Corner Handles */}
+            {[0, 1, 2, 3].map((i) => (
+                <Circle
+                    key={i}
+                    x={points[i * 2]}
+                    y={points[i * 2 + 1]}
+                    radius={8}
+                    fill="white"
+                    stroke="black"
+                    strokeWidth={1}
+                    draggable
+                    onDragMove={(e) => handlePointDrag(e, i)}
+                    hitStrokeWidth={20}
+                />
+            ))}
+
           </Layer>
         </Stage>
+
+        {/* Distance Input Overlay (Right Edge: P1->P2) */}
+        {(() => {
+            // P1 is index 2,3. P2 is index 4,5
+            const x1 = points[2];
+            const y1 = points[3];
+            const x2 = points[4];
+            const y2 = points[5];
+            
+            const cx = (x1 + x2) / 2;
+            const cy = (y1 + y2) / 2;
+            
+            return (
+                <>
+                <style>{`
+                    .no-spinner::-webkit-outer-spin-button,
+                    .no-spinner::-webkit-inner-spin-button {
+                        -webkit-appearance: none;
+                        margin: 0;
+                    }
+                    .no-spinner {
+                        -moz-appearance: textfield;
+                    }
+                `}</style>
+                <div 
+                    style={{ 
+                        position: 'absolute', 
+                        left: cx, 
+                        top: cy,
+                        transform: 'translate(-50%, -50%)'
+                    }}
+                    className="flex items-center gap-1 bg-black/60 px-2 py-1 rounded backdrop-blur-sm pointer-events-auto"
+                >
+                     <input 
+                        type="number"
+                        value={distance || ''}
+                        onChange={(e) => onDistanceChange(parseFloat(e.target.value))}
+                        className="w-12 bg-transparent text-white text-center font-bold outline-none border-b border-white/50 focus:border-white text-sm no-spinner"
+                        placeholder="Dist"
+                     />
+                     <span className="text-white text-xs font-medium">m</span>
+                </div>
+                </>
+            );
+        })()}
       </div>
     </div>
   );

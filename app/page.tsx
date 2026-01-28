@@ -2,8 +2,6 @@
 
 import { useState } from "react";
 import TrafficStream from "@/components/TrafficStream";
-import { VideoSelector } from "@/components/VideoSelector";
-import { ClassSelector } from "@/components/ClassSelector";
 import { TrafficLog } from "@/components/TrafficLog";
 
 export default function Home() {
@@ -15,29 +13,19 @@ export default function Home() {
       <div className="w-full max-w-5xl space-y-8 flex flex-col items-center">
         <div className="text-center space-y-2">
           <h1 className="text-4xl font-bold tracking-tighter sm:text-5xl text-zinc-900 dark:text-zinc-50">
-            Sindika Traffic Analytics
+            Sindika Traffic Tracking Analytic
           </h1>
           <p className="text-lg text-zinc-600 dark:text-zinc-400">
-            Real-time object detection and tracking via WebRTC
+            Real-time object detection and tracking with WebRTC
           </p>
         </div>
 
         <TrafficStream 
           videoSource={videoSource}
+          onVideoSourceChange={setVideoSource}
           targetClasses={targetClasses}
+          onTargetClassesChange={setTargetClasses}
         />
-
-        <div className="flex flex-col md:flex-row gap-4 w-full max-w-4xl justify-center">
-            <VideoSelector 
-              selectedVideo={videoSource} 
-              onSelect={setVideoSource} 
-            />
-            
-            <ClassSelector
-              selectedClasses={targetClasses}
-              onChange={setTargetClasses}
-            />
-        </div>
 
         <TrafficLog />
         
