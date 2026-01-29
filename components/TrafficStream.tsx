@@ -11,16 +11,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Play, Square, Activity, AlertCircle, RefreshCw, Upload, Filter, Film } from "lucide-react";
 import dynamic from "next/dynamic";
-
-const ZoneConfig = dynamic(
-  () => import('./ZoneConfig').then((mod) => mod.ZoneConfig),
-  { ssr: false }
-);
+import { LaneConfig, LaneConfigPanel, Lane } from "./LaneConfig";
 
 interface TrafficStreamProps {
   videoSource?: string;
@@ -86,7 +81,7 @@ export default function TrafficStream({
     formData.append("file", file);
 
     const xhr = new XMLHttpRequest();
-    xhr.open("POST", "/api/upload", true);
+    xhr.open("POST", "/api/videos/upload", true);
 
     xhr.upload.onprogress = (event) => {
       if (event.lengthComputable) {
@@ -241,112 +236,73 @@ export default function TrafficStream({
     };
   }, []);
 
-  // State for ZONE configuration
-  // zone is [x1, y1, x2, y2, x3, y3, x4, y4]
-  const [zoneConfig, setZoneConfig] = useState<any>(null); 
-  const [originalConfig, setOriginalConfig] = useState<any>(null);
+  // State for LANE configuration (replacing old zone config)
+  const [lanes, setLanes] = useState<Lane[]>([]);
+  const [originalLanes, setOriginalLanes] = useState<Lane[]>([]);
 
   const startConfig = () => {
-      if (zoneConfig) {
-          setOriginalConfig(JSON.parse(JSON.stringify(zoneConfig)));
-      }
+      setOriginalLanes(JSON.parse(JSON.stringify(lanes)));
       setShowConfig(true);
   };
 
   const cancelConfig = () => {
-      if (originalConfig) {
-          setZoneConfig(originalConfig);
-      }
+      setLanes(originalLanes);
       setShowConfig(false);
   };
   
-  // Initialize config when showing overlay if not already set, OR populate from API
+  // Load lane config from API when dimensions are ready
   useEffect(() => {
-      if (dimensions.width > 0) {
-           if (!zoneConfig) {
-               // Load Config from server
-               fetch("/api/config/lines")
-               .then(res => res.json())
-               .then(data => {
-                   const width = dimensions.width;
-                   const height = dimensions.height;
-                   
-                   if (data.polygon) {
-                       setZoneConfig({
-                           points: data.polygon.map((p:number, i:number) => i % 2 === 0 ? p * width : p * height),
-                           distance: data.distance
-                       });
-                   } else if (data.line1 && data.line2) {
-                        // Backward compatibility
-                        const l1 = data.line1;
-                        const l2 = data.line2;
-                        setZoneConfig({
-                             points: [
-                                 l1[0] * width, l1[1] * height, 
-                                 l1[2] * width, l1[3] * height, 
-                                 l2[2] * width, l2[3] * height, 
-                                 l2[0] * width, l2[1] * height  
-                             ],
-                             distance: data.distance
-                        });
-                   } else if (showConfig) {
-                       // Default Rect
-                       setZoneConfig({
-                           points: [
-                               width * 0.3, height * 0.3, 
-                               width * 0.7, height * 0.3, 
-                               width * 0.7, height * 0.7, 
-                               width * 0.3, height * 0.7  
-                           ],
-                           distance: 5
-                       })
-                   }
-               })
-               .catch(err => {
-                   console.error("Config fetch failed", err);
-                   if (showConfig) {
-                        const width = dimensions.width;
-                        const height = dimensions.height;
-                        setZoneConfig({
-                            points: [
-                                width * 0.3, height * 0.3,
-                                width * 0.7, height * 0.3,
-                                width * 0.7, height * 0.7,
-                                width * 0.3, height * 0.7 
-                            ],
-                            distance: 5
-                        })
-                   }
-               })
-           }
+      if (dimensions.width > 0 && lanes.length === 0) {
+          fetch("/api/config/lanes")
+          .then(res => res.json())
+          .then(data => {
+              const width = dimensions.width;
+              const height = dimensions.height;
+              
+              if (data.lanes && data.lanes.length > 0) {
+                  // Convert normalized coords to pixel coords
+                  const pixelLanes = data.lanes.map((lane: any) => ({
+                      ...lane,
+                      line_a: lane.line_a.map((v: number, i: number) => 
+                          i % 2 === 0 ? v * width : v * height
+                      ),
+                      line_b: lane.line_b.map((v: number, i: number) => 
+                          i % 2 === 0 ? v * width : v * height
+                      )
+                  }));
+                  setLanes(pixelLanes);
+              }
+          })
+          .catch(err => {
+              console.error("Lane config fetch failed", err);
+          });
       }
-  }, [showConfig, dimensions]);
+  }, [dimensions]);
 
-  // Handle saving config
+  // Handle saving lane config
   const handleSaveConfig = async () => {
-     if (!zoneConfig) return;
-     console.log("Saving Config:", zoneConfig);
+     if (!lanes.length) return;
+     console.log("Saving Lane Config:", lanes);
      
      // Normalize to 0-1 scale
-     const normalizedPoints = zoneConfig.points.map((p: number, i: number) => 
-         i % 2 === 0 ? p / dimensions.width : p / dimensions.height
-     );
-
-     const normalizedConfig = {
-         polygon: normalizedPoints, // Use 'polygon' for backend
-         distance: zoneConfig.distance
-     };
+     const normalizedLanes = lanes.map(lane => ({
+         ...lane,
+         line_a: lane.line_a.map((v, i) => 
+             i % 2 === 0 ? v / dimensions.width : v / dimensions.height
+         ),
+         line_b: lane.line_b.map((v, i) => 
+             i % 2 === 0 ? v / dimensions.width : v / dimensions.height
+         )
+     }));
 
      try {
-         // Post to /api/config/zone as in friend's update, or /api/config/lines (both work now)
-         await fetch("/api/config/zone", {
+         await fetch("/api/config/lanes", {
              method: "POST",
              headers: {"Content-Type": "application/json"},
-             body: JSON.stringify(normalizedConfig)
+             body: JSON.stringify({ lanes: normalizedLanes })
          });
          setShowConfig(false);
-         // Also update original config so cancel works for subsequent edits
-         setOriginalConfig(JSON.parse(JSON.stringify(zoneConfig)));
+         setOriginalLanes(JSON.parse(JSON.stringify(lanes)));
      } catch(e) {
          console.error(e);
      }
@@ -364,14 +320,16 @@ export default function TrafficStream({
     }
   }, [videoSource]);
 
-  const togglePlayPause = () => {
+  const togglePlayPause = async () => {
       if (videoRef.current) {
           if (videoRef.current.paused) {
+              await fetch("/api/control/resume", { method: "POST" });
               videoRef.current.play();
               setIsPaused(false);
           } else {
               videoRef.current.pause();
               setIsPaused(true);
+              await fetch("/api/control/pause", { method: "POST" });
           }
       }
   };
@@ -479,7 +437,7 @@ export default function TrafficStream({
                         onClick={startConfig}
                         disabled={!isStreaming && status !== "Live" && !previewUrl}
                     >
-                        Configure Zone
+                        Configure Lanes
                     </Button>
                 ) : (
                     <div className="flex gap-2">
@@ -544,19 +502,13 @@ export default function TrafficStream({
                 </div>
             )}
             
-            {/* Config Overlay */}
-            {showConfig && dimensions.width > 0 && zoneConfig && (
-                // @ts-ignore
-                <ZoneConfig 
+            {/* Lane Config Overlay */}
+            {showConfig && dimensions.width > 0 && (
+                <LaneConfig 
                     width={dimensions.width} 
                     height={dimensions.height}
-                    points={zoneConfig.points}
-                    onPointsChange={(pts: number[]) => {
-                        setZoneConfig((prev:any) => ({
-                            ...prev,
-                            points: pts
-                        }))
-                    }}
+                    lanes={lanes}
+                    onLanesChange={setLanes}
                 />
             )}
             </div>
@@ -612,31 +564,16 @@ export default function TrafficStream({
         </CardContent>
         </Card>
         
-        {/* Speed Config Controls */}
-        {showConfig && zoneConfig && (
-             <Card className="p-4 border-zinc-200 dark:border-zinc-800 animate-in fade-in slide-in-from-top-4">
-                <div className="flex items-end gap-4">
-                     <div className="flex flex-col gap-2 flex-grow">
-                        <label className="text-sm font-medium">Approximate Zone Diameter/Crossing Distance (Meters)</label>
-                        <input 
-                            type="number" 
-                            className="flex h-10 w-full rounded-md border border-zinc-200 bg-white px-3 py-2 text-sm ring-offset-white file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-zinc-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-950 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 dark:border-zinc-800 dark:bg-zinc-950 dark:ring-offset-zinc-950 dark:placeholder:text-zinc-400 dark:focus-visible:ring-zinc-300"
-                            value={zoneConfig.distance || ''}
-                            onChange={(e) => {
-                                const val = parseFloat(e.target.value);
-                                setZoneConfig({...zoneConfig, distance: isNaN(val) ? 0 : val})
-                            }}
-                        />
-                     </div>
-                     <Button onClick={handleSaveConfig} className="bg-green-600 hover:bg-green-700 text-white">
-                         Save Zone Config
-                     </Button>
-                </div>
-                <p className="text-xs text-zinc-500 mt-2">
-                    Drag the corners to cover the intersection. The system will detect when vehicles enter and exit this zone.
-                    Direction is calculated from the Entry point to the Exit point.
-                </p>
-             </Card>
+        {/* Lane Config Panel */}
+        {showConfig && (
+             <LaneConfigPanel
+                 lanes={lanes}
+                 onLanesChange={setLanes}
+                 onSave={handleSaveConfig}
+                 onCancel={cancelConfig}
+                 width={dimensions.width}
+                 height={dimensions.height}
+             />
         )}
     </div>
   );

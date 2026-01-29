@@ -1,6 +1,13 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  experimental: {
+    serverActions: {
+      bodySizeLimit: "2gb",
+    },
+    // Fix for 10MB limit check in dev mode for rewrites
+    middlewareClientMaxBodySize: "2gb", 
+  },
   async rewrites() {
     return [
       {

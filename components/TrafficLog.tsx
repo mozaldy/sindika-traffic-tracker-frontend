@@ -16,6 +16,8 @@ interface TrafficEvent {
     crossing_end?: number;
     image_path?: string;
     video_source?: string;
+    license_plate?: string;
+    plate_image_path?: string;
 }
 
 export function TrafficLog() {
@@ -28,9 +30,11 @@ export function TrafficLog() {
         try {
             const res = await fetch("/api/events?limit=50");
             const data = await res.json();
-            setEvents(data.events);
+            // API returns array directly, not { events: [] }
+            setEvents(Array.isArray(data) ? data : (data.events || []));
         } catch (e) {
             console.error("Failed to fetch events", e);
+            setEvents([]);
         } finally {
             setLoading(false);
         }
@@ -103,6 +107,7 @@ export function TrafficLog() {
                                 <TableHead>Class</TableHead>
                                 <TableHead>Speed</TableHead>
                                 <TableHead>Direction</TableHead>
+                                <TableHead>Plate</TableHead>
                                 <TableHead>Source</TableHead>
                                 <TableHead className="text-right">Action</TableHead>
                             </TableRow>
@@ -110,7 +115,7 @@ export function TrafficLog() {
                         <TableBody>
                             {events.length === 0 ? (
                                 <TableRow>
-                                    <TableCell colSpan={8} className="h-24 text-center text-muted-foreground">
+                                    <TableCell colSpan={9} className="h-24 text-center text-muted-foreground">
                                         No traffic events recorded yet.
                                     </TableCell>
                                 </TableRow>
@@ -146,10 +151,8 @@ export function TrafficLog() {
                                                 {event.class_name}
                                             </Badge>
                                         </TableCell>
-                                        <TableCell>
-                                            <span className={event.speed_kmh > 50 ? "text-red-500 font-bold" : "text-green-600 font-bold"}>
-                                                {event.speed_kmh.toFixed(1)} km/h
-                                            </span>
+                                        <TableCell className="font-mono text-sm">
+                                            {event.speed_kmh.toFixed(1)} <span className="text-xs text-muted-foreground">km/h</span>
                                         </TableCell>
                                         <TableCell>
                                             <div className="flex items-center gap-2" title={`Angle: ${event.direction_deg?.toFixed(0)}°`}>
