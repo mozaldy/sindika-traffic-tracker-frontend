@@ -13,9 +13,11 @@ import {
 } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Play, Square, Activity, AlertCircle, RefreshCw, Upload, Filter, Film } from "lucide-react";
+import { Play, Square, Activity, AlertCircle, RefreshCw, Upload, Filter, Film, Settings2 } from "lucide-react";
 import dynamic from "next/dynamic";
 import { LaneConfig, LaneConfigPanel, Lane } from "./LaneConfig";
+import { ModuleConfigPanel } from "./ModuleConfig";
+import { ZoneConfig } from "./ZoneConfig";
 
 interface TrafficStreamProps {
   videoSource?: string;
@@ -42,6 +44,8 @@ export default function TrafficStream({
   const isNegotiating = useRef(false);
 
   const [showConfig, setShowConfig] = useState(false);
+  const [showModuleConfig, setShowModuleConfig] = useState(false);
+  const [showZoneConfig, setShowZoneConfig] = useState(false);
   const [dimensions, setDimensions] = useState({ width: 0, height: 0 });
 
   // Video Selection & Filter State
@@ -67,9 +71,77 @@ export default function TrafficStream({
     }
   };
 
+  // Lane Config State
+  const [lanes, setLanes] = useState<Lane[]>([]);
+  const [originalLanes, setOriginalLanes] = useState<Lane[]>([]);
+
+  // Zone Config State
+  const [zones, setZones] = useState<number[]>([]); // [x1,y1,x2,y2,x3,y3,x4,y4]
+  const [originalZones, setOriginalZones] = useState<number[]>([]);
+
+  const fetchConfig = async () => {
+    if (dimensions.width === 0) return; // Need dimensions to denormalize
+
+    // Fetch Lanes
+    try {
+        const res = await fetch("/api/config/lanes");
+        if (res.ok) {
+            const data = await res.json();
+            const width = dimensions.width;
+            const height = dimensions.height;
+            
+            if (data.lanes && data.lanes.length > 0) {
+                // Convert normalized coords to pixel coords
+                const pixelLanes = data.lanes.map((lane: any) => ({
+                    ...lane,
+                    line_a: lane.line_a.map((v: number, i: number) => 
+                        i % 2 === 0 ? v * width : v * height
+                    ),
+                    line_b: lane.line_b.map((v: number, i: number) => 
+                        i % 2 === 0 ? v * width : v * height
+                    )
+                }));
+                setLanes(pixelLanes);
+            } else {
+                setLanes([]);
+            }
+        }
+    } catch (err) {
+        console.error("Lane config fetch failed", err);
+    }
+    
+    // Fetch Zones
+    try {
+        const res = await fetch("/api/config/zones");
+        if (res.ok) {
+            const data = await res.json();
+            const width = dimensions.width;
+            const height = dimensions.height;
+
+            if (data.zones && data.zones.length > 0) {
+                // Keep points normalized (ZoneConfig handles conversion)
+                const normPoints = data.zones[0].points.flat();
+                setZones(normPoints); 
+            } else {
+                // Default box (normalized)
+                setZones([0.3, 0.3, 0.7, 0.3, 0.7, 0.7, 0.3, 0.7]);
+            }
+        }
+    } catch (err) {
+        console.error("Failed to load zones:", err);
+    }
+  };
+
   useEffect(() => {
     fetchVideos();
   }, []);
+
+  // Load config when dimensions are ready
+  useEffect(() => {
+      if (dimensions.width > 0) {
+          fetchConfig();
+      }
+  }, [dimensions]);
 
   const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!e.target.files || e.target.files.length === 0) return;
@@ -236,51 +308,18 @@ export default function TrafficStream({
     };
   }, []);
 
-  // State for LANE configuration (replacing old zone config)
-  const [lanes, setLanes] = useState<Lane[]>([]);
-  const [originalLanes, setOriginalLanes] = useState<Lane[]>([]);
-
-  const startConfig = () => {
+  const startLaneConfig = () => {
       setOriginalLanes(JSON.parse(JSON.stringify(lanes)));
       setShowConfig(true);
   };
 
-  const cancelConfig = () => {
-      setLanes(originalLanes);
-      setShowConfig(false);
+  const startZoneConfig = () => {
+      setOriginalZones([...zones]); // Simple copy for number array
+      setShowZoneConfig(true);
   };
-  
-  // Load lane config from API when dimensions are ready
-  useEffect(() => {
-      if (dimensions.width > 0 && lanes.length === 0) {
-          fetch("/api/config/lanes")
-          .then(res => res.json())
-          .then(data => {
-              const width = dimensions.width;
-              const height = dimensions.height;
-              
-              if (data.lanes && data.lanes.length > 0) {
-                  // Convert normalized coords to pixel coords
-                  const pixelLanes = data.lanes.map((lane: any) => ({
-                      ...lane,
-                      line_a: lane.line_a.map((v: number, i: number) => 
-                          i % 2 === 0 ? v * width : v * height
-                      ),
-                      line_b: lane.line_b.map((v: number, i: number) => 
-                          i % 2 === 0 ? v * width : v * height
-                      )
-                  }));
-                  setLanes(pixelLanes);
-              }
-          })
-          .catch(err => {
-              console.error("Lane config fetch failed", err);
-          });
-      }
-  }, [dimensions]);
 
   // Handle saving lane config
-  const handleSaveConfig = async () => {
+  const handleSaveLanes = async () => {
      if (!lanes.length) return;
      console.log("Saving Lane Config:", lanes);
      
@@ -296,18 +335,60 @@ export default function TrafficStream({
      }));
 
      try {
-         await fetch("/api/config/lanes", {
+         const res = await fetch("/api/config/lanes", {
              method: "POST",
              headers: {"Content-Type": "application/json"},
              body: JSON.stringify({ lanes: normalizedLanes })
          });
-         setShowConfig(false);
-         setOriginalLanes(JSON.parse(JSON.stringify(lanes)));
+         if (res.ok) {
+            setShowConfig(false);
+            setOriginalLanes(JSON.parse(JSON.stringify(lanes)));
+         }
      } catch(e) {
          console.error(e);
      }
   };
 
+  const handleSaveZones = async () => {
+      try {
+          // Convert flat array [x1,y1,x2,y2...] to [[x1,y1], [x2,y2]...]
+          const points = [];
+          for (let i = 0; i < zones.length; i += 2) {
+              points.push([zones[i], zones[i+1]]); // Already normalized
+          }
+          
+          const payload = {
+              zones: [{
+                  name: "Intersection Zone",
+                  points: points
+              }]
+          };
+          
+          const res = await fetch("/api/config/zones", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(payload),
+          });
+          
+          if (res.ok) {
+              setShowZoneConfig(false);
+              setOriginalZones([...zones]);
+          }
+      } catch (err) {
+          console.error("Failed to save zones:", err);
+      }
+  };
+
+  const cancelLaneConfig = () => {
+      setLanes(originalLanes);
+      setShowConfig(false);
+  };
+
+  const cancelZoneConfig = () => {
+      setZones(originalZones);
+      setShowZoneConfig(false);
+  };
+  
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [isPaused, setIsPaused] = useState(false);
 
@@ -430,29 +511,49 @@ export default function TrafficStream({
 
                 {/* Config Controls */}
                 {!showConfig ? (
-                    <Button 
-                        variant="secondary" 
-                        size="sm" 
-                        className="h-9"
-                        onClick={startConfig}
-                        disabled={!isStreaming && status !== "Live" && !previewUrl}
-                    >
-                        Configure Lanes
-                    </Button>
+                    <div className="flex gap-2">
+                        <Button 
+                            variant="ghost" 
+                            size="icon" 
+                            className="h-9 w-9"
+                            onClick={() => setShowModuleConfig(!showModuleConfig)}
+                            title="Module Settings"
+                        >
+                            <Settings2 className="h-4 w-4" />
+                        </Button>
+                        <Button 
+                            variant="secondary" 
+                            size="sm" 
+                            className="h-9"
+                            onClick={startLaneConfig}
+                            disabled={!isStreaming && status !== "Live" && !previewUrl}
+                        >
+                            Configure Lanes
+                        </Button>
+                        <Button 
+                            variant="secondary" 
+                            size="sm" 
+                            className="h-9"
+                            onClick={() => setShowZoneConfig(true)}
+                            disabled={!isStreaming && status !== "Live" && !previewUrl}
+                        >
+                            Configure Zones
+                        </Button>
+                    </div>
                 ) : (
                     <div className="flex gap-2">
                         <Button 
                             variant="ghost" 
                             size="sm"
                             className="h-9 text-red-500 hover:text-red-600 hover:bg-red-50"
-                            onClick={cancelConfig}
+                            onClick={cancelLaneConfig}
                         >
                             Cancel
                         </Button>
                         <Button 
                             size="sm" 
                             className="h-9 bg-green-600 hover:bg-green-700 text-white"
-                            onClick={handleSaveConfig}
+                            onClick={handleSaveLanes}
                         >
                             Save Config
                         </Button>
@@ -509,6 +610,21 @@ export default function TrafficStream({
                     height={dimensions.height}
                     lanes={lanes}
                     onLanesChange={setLanes}
+                />
+            )}
+            {/* Zone Config Overlay */}
+            {showZoneConfig && dimensions.width > 0 && (
+                <ZoneConfig
+                    width={dimensions.width}
+                    height={dimensions.height}
+                    points={zones.map((v, i) => i % 2 === 0 ? v * dimensions.width : v * dimensions.height)}
+                    onPointsChange={(newPixels) => {
+                        // Convert pixels back to normalized
+                        const newNorm = newPixels.map((v, i) => i % 2 === 0 ? v / dimensions.width : v / dimensions.height);
+                        setZones(newNorm);
+                    }}
+                    onSave={handleSaveZones}
+                    onCancel={() => { setShowZoneConfig(false); cancelZoneConfig(); }}
                 />
             )}
             </div>
@@ -569,11 +685,17 @@ export default function TrafficStream({
              <LaneConfigPanel
                  lanes={lanes}
                  onLanesChange={setLanes}
-                 onSave={handleSaveConfig}
-                 onCancel={cancelConfig}
+                 onSave={handleSaveLanes}
+                 onCancel={cancelLaneConfig}
                  width={dimensions.width}
                  height={dimensions.height}
              />
+        )}
+
+        
+        {/* Module Config Panel */}
+        {showModuleConfig && (
+            <ModuleConfigPanel onClose={() => setShowModuleConfig(false)} />
         )}
     </div>
   );
