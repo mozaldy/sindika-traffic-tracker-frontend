@@ -15,9 +15,10 @@ import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Play, Square, Activity, AlertCircle, RefreshCw, Upload, Filter, Film, Settings2 } from "lucide-react";
 import dynamic from "next/dynamic";
-import { LaneConfig, LaneConfigPanel, Lane } from "./LaneConfig";
+import { LaneConfig, LaneConfigPanel, Lane } from "./SpeedZoneConfig";
 import { ModuleConfigPanel } from "./ModuleConfig";
-import { ZoneConfig } from "./ZoneConfig";
+import { ZoneConfig, MultiZoneConfig } from "./TurnZoneConfig";
+import { ZoneConfigPanel, Zone } from "./ZoneConfigPanel";
 
 interface TrafficStreamProps {
   videoSource?: string;
@@ -75,9 +76,10 @@ export default function TrafficStream({
   const [lanes, setLanes] = useState<Lane[]>([]);
   const [originalLanes, setOriginalLanes] = useState<Lane[]>([]);
 
-  // Zone Config State
-  const [zones, setZones] = useState<number[]>([]); // [x1,y1,x2,y2,x3,y3,x4,y4]
-  const [originalZones, setOriginalZones] = useState<number[]>([]);
+  // Zone Config State (multi-zone)
+  const [zones, setZones] = useState<Zone[]>([]);
+  const [originalZones, setOriginalZones] = useState<Zone[]>([]);
+  const [selectedZoneId, setSelectedZoneId] = useState<string | null>(null);
 
   const fetchConfig = async () => {
     if (dimensions.width === 0) return; // Need dimensions to denormalize
@@ -110,7 +112,7 @@ export default function TrafficStream({
         console.error("Lane config fetch failed", err);
     }
     
-    // Fetch Zones
+    // Fetch Zones (multi-zone)
     try {
         const res = await fetch("/api/config/zones");
         if (res.ok) {
@@ -119,12 +121,16 @@ export default function TrafficStream({
             const height = dimensions.height;
 
             if (data.zones && data.zones.length > 0) {
-                // Keep points normalized (ZoneConfig handles conversion)
-                const normPoints = data.zones[0].points.flat();
-                setZones(normPoints); 
+                // Convert normalized coords to pixel coords for each zone
+                const pixelZones: Zone[] = data.zones.map((zone: any) => ({
+                    ...zone,
+                    polygon: zone.polygon.map((v: number, i: number) => 
+                        i % 2 === 0 ? v * width : v * height
+                    )
+                }));
+                setZones(pixelZones);
             } else {
-                // Default box (normalized)
-                setZones([0.3, 0.3, 0.7, 0.3, 0.7, 0.7, 0.3, 0.7]);
+                setZones([]);
             }
         }
     } catch (err) {
@@ -314,7 +320,7 @@ export default function TrafficStream({
   };
 
   const startZoneConfig = () => {
-      setOriginalZones([...zones]); // Simple copy for number array
+      setOriginalZones(JSON.parse(JSON.stringify(zones))); // Deep copy
       setShowZoneConfig(true);
   };
 
@@ -326,10 +332,10 @@ export default function TrafficStream({
      // Normalize to 0-1 scale
      const normalizedLanes = lanes.map(lane => ({
          ...lane,
-         line_a: lane.line_a.map((v, i) => 
+         line_a: lane.line_a.map((v: number, i: number) => 
              i % 2 === 0 ? v / dimensions.width : v / dimensions.height
          ),
-         line_b: lane.line_b.map((v, i) => 
+         line_b: lane.line_b.map((v: number, i: number) => 
              i % 2 === 0 ? v / dimensions.width : v / dimensions.height
          )
      }));
@@ -351,28 +357,23 @@ export default function TrafficStream({
 
   const handleSaveZones = async () => {
       try {
-          // Convert flat array [x1,y1,x2,y2...] to [[x1,y1], [x2,y2]...]
-          const points = [];
-          for (let i = 0; i < zones.length; i += 2) {
-              points.push([zones[i], zones[i+1]]); // Already normalized
-          }
-          
-          const payload = {
-              zones: [{
-                  name: "Intersection Zone",
-                  points: points
-              }]
-          };
+          // Normalize polygon coordinates to 0-1 scale for each zone
+          const normalizedZones = zones.map(zone => ({
+              ...zone,
+              polygon: zone.polygon.map((v: number, i: number) => 
+                  i % 2 === 0 ? v / dimensions.width : v / dimensions.height
+              )
+          }));
           
           const res = await fetch("/api/config/zones", {
               method: "POST",
               headers: { "Content-Type": "application/json" },
-              body: JSON.stringify(payload),
+              body: JSON.stringify({ zones: normalizedZones }),
           });
           
           if (res.ok) {
               setShowZoneConfig(false);
-              setOriginalZones([...zones]);
+              setOriginalZones(JSON.parse(JSON.stringify(zones)));
           }
       } catch (err) {
           console.error("Failed to save zones:", err);
@@ -612,19 +613,15 @@ export default function TrafficStream({
                     onLanesChange={setLanes}
                 />
             )}
-            {/* Zone Config Overlay */}
+            {/* Zone Config Overlay (Multi-Zone) */}
             {showZoneConfig && dimensions.width > 0 && (
-                <ZoneConfig
+                <MultiZoneConfig
                     width={dimensions.width}
                     height={dimensions.height}
-                    points={zones.map((v, i) => i % 2 === 0 ? v * dimensions.width : v * dimensions.height)}
-                    onPointsChange={(newPixels) => {
-                        // Convert pixels back to normalized
-                        const newNorm = newPixels.map((v, i) => i % 2 === 0 ? v / dimensions.width : v / dimensions.height);
-                        setZones(newNorm);
-                    }}
-                    onSave={handleSaveZones}
-                    onCancel={() => { setShowZoneConfig(false); cancelZoneConfig(); }}
+                    zones={zones}
+                    onZonesChange={setZones}
+                    selectedZoneId={selectedZoneId}
+                    onSelectZone={setSelectedZoneId}
                 />
             )}
             </div>
@@ -687,6 +684,18 @@ export default function TrafficStream({
                  onLanesChange={setLanes}
                  onSave={handleSaveLanes}
                  onCancel={cancelLaneConfig}
+                 width={dimensions.width}
+                 height={dimensions.height}
+             />
+        )}
+
+        {/* Zone Config Panel */}
+        {showZoneConfig && (
+             <ZoneConfigPanel
+                 zones={zones}
+                 onZonesChange={setZones}
+                 onSave={handleSaveZones}
+                 onCancel={cancelZoneConfig}
                  width={dimensions.width}
                  height={dimensions.height}
              />

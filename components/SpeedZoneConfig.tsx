@@ -113,11 +113,11 @@ export function LaneConfig({ width, height, lanes, onLanesChange }: LaneConfigPr
     };
 
     return (
-        <div className="absolute inset-0 z-40">
+        <div className="absolute inset-0 z-40 pointer-events-none">
             {/* SVG Overlay for drawing lines */}
             <svg
                 ref={svgRef}
-                className="absolute inset-0 w-full h-full cursor-crosshair"
+                className="absolute inset-0 w-full h-full cursor-crosshair pointer-events-auto"
                 style={{ width, height }}
                 onMouseMove={handleMouseMove}
                 onMouseUp={handleMouseUp}
