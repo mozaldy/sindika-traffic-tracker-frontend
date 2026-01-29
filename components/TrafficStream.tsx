@@ -13,12 +13,13 @@ import {
 } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Play, Square, Activity, AlertCircle, RefreshCw, Upload, Filter, Film, Settings2 } from "lucide-react";
+import { Play, Square, Activity, AlertCircle, RefreshCw, Upload, Filter, Film } from "lucide-react";
 import dynamic from "next/dynamic";
-import { LaneConfig, LaneConfigPanel, Lane } from "./SpeedZoneConfig";
-import { ModuleConfigPanel } from "./ModuleConfig";
-import { ZoneConfig, MultiZoneConfig } from "./TurnZoneConfig";
-import { ZoneConfigPanel, Zone } from "./ZoneConfigPanel";
+import { LaneConfig, Lane } from "./SpeedZoneConfig";
+import { MultiZoneConfig } from "./TurnZoneConfig";
+import { Zone } from "./ZoneConfigPanel";
+import { SettingsPanel } from "./SettingsPanel";
+import { PlateLineOverlay } from "./PlateLineConfig";
 
 interface TrafficStreamProps {
   videoSource?: string;
@@ -44,9 +45,6 @@ export default function TrafficStream({
   // Ref to keep track if we are currently negotiating to avoid race conditions if source changes rapidly
   const isNegotiating = useRef(false);
 
-  const [showConfig, setShowConfig] = useState(false);
-  const [showModuleConfig, setShowModuleConfig] = useState(false);
-  const [showZoneConfig, setShowZoneConfig] = useState(false);
   const [dimensions, setDimensions] = useState({ width: 0, height: 0 });
 
   // Video Selection & Filter State
@@ -74,12 +72,13 @@ export default function TrafficStream({
 
   // Lane Config State
   const [lanes, setLanes] = useState<Lane[]>([]);
-  const [originalLanes, setOriginalLanes] = useState<Lane[]>([]);
 
   // Zone Config State (multi-zone)
   const [zones, setZones] = useState<Zone[]>([]);
-  const [originalZones, setOriginalZones] = useState<Zone[]>([]);
   const [selectedZoneId, setSelectedZoneId] = useState<string | null>(null);
+
+  // Plate Line State
+  const [plateLine, setPlateLine] = useState<number[] | null>(null);
 
   const fetchConfig = async () => {
     if (dimensions.width === 0) return; // Need dimensions to denormalize
@@ -135,6 +134,31 @@ export default function TrafficStream({
         }
     } catch (err) {
         console.error("Failed to load zones:", err);
+    }
+
+    // Fetch Plate Line
+    try {
+        const res = await fetch("/api/config/plate_line");
+        if (res.ok) {
+            const data = await res.json();
+            const width = dimensions.width;
+            const height = dimensions.height;
+
+            if (data.plate_line && data.plate_line.length === 4) {
+                // Convert normalized coords to pixel coords
+                const pixelLine = [
+                    data.plate_line[0] * width,
+                    data.plate_line[1] * height,
+                    data.plate_line[2] * width,
+                    data.plate_line[3] * height,
+                ];
+                setPlateLine(pixelLine);
+            } else {
+                setPlateLine(null);
+            }
+        }
+    } catch (err) {
+        console.error("Failed to load plate line:", err);
     }
   };
 
@@ -314,29 +338,22 @@ export default function TrafficStream({
     };
   }, []);
 
-  const startLaneConfig = () => {
-      setOriginalLanes(JSON.parse(JSON.stringify(lanes)));
-      setShowConfig(true);
-  };
 
-  const startZoneConfig = () => {
-      setOriginalZones(JSON.parse(JSON.stringify(zones))); // Deep copy
-      setShowZoneConfig(true);
-  };
 
   // Handle saving lane config
   const handleSaveLanes = async () => {
      if (!lanes.length) return;
-     console.log("Saving Lane Config:", lanes);
+     const width = dimensions.width || 640;
+     const height = dimensions.height || 360;
      
      // Normalize to 0-1 scale
      const normalizedLanes = lanes.map(lane => ({
          ...lane,
          line_a: lane.line_a.map((v: number, i: number) => 
-             i % 2 === 0 ? v / dimensions.width : v / dimensions.height
+             i % 2 === 0 ? v / width : v / height
          ),
          line_b: lane.line_b.map((v: number, i: number) => 
-             i % 2 === 0 ? v / dimensions.width : v / dimensions.height
+             i % 2 === 0 ? v / width : v / height
          )
      }));
 
@@ -347,8 +364,7 @@ export default function TrafficStream({
              body: JSON.stringify({ lanes: normalizedLanes })
          });
          if (res.ok) {
-            setShowConfig(false);
-            setOriginalLanes(JSON.parse(JSON.stringify(lanes)));
+            // Saved
          }
      } catch(e) {
          console.error(e);
@@ -357,11 +373,14 @@ export default function TrafficStream({
 
   const handleSaveZones = async () => {
       try {
+          const width = dimensions.width || 640;
+          const height = dimensions.height || 360;
+
           // Normalize polygon coordinates to 0-1 scale for each zone
           const normalizedZones = zones.map(zone => ({
               ...zone,
               polygon: zone.polygon.map((v: number, i: number) => 
-                  i % 2 === 0 ? v / dimensions.width : v / dimensions.height
+                  i % 2 === 0 ? v / width : v / height
               )
           }));
           
@@ -372,22 +391,38 @@ export default function TrafficStream({
           });
           
           if (res.ok) {
-              setShowZoneConfig(false);
-              setOriginalZones(JSON.parse(JSON.stringify(zones)));
+              // Saved
           }
       } catch (err) {
           console.error("Failed to save zones:", err);
       }
   };
 
-  const cancelLaneConfig = () => {
-      setLanes(originalLanes);
-      setShowConfig(false);
-  };
+  const handleSavePlateLine = async () => {
+      try {
+          const width = dimensions.width || 640;
+          const height = dimensions.height || 360;
 
-  const cancelZoneConfig = () => {
-      setZones(originalZones);
-      setShowZoneConfig(false);
+          // Normalize to 0-1 scale
+          const normalizedLine = plateLine ? [
+              plateLine[0] / width,
+              plateLine[1] / height,
+              plateLine[2] / width,
+              plateLine[3] / height,
+          ] : null;
+
+          const res = await fetch("/api/config/plate_line", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ plate_line: normalizedLine }),
+          });
+
+          if (res.ok) {
+              // Saved
+          }
+      } catch (err) {
+          console.error("Failed to save plate line:", err);
+      }
   };
   
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
@@ -417,7 +452,7 @@ export default function TrafficStream({
   };
 
   return (
-    <div className="flex flex-col gap-4 max-w-5xl mx-auto w-full">
+    <div className="flex flex-col gap-4 mx-auto w-full">
         <Card className="w-full shadow-lg border-zinc-200 dark:border-zinc-800">
         <CardHeader className="flex flex-col gap-4">
             <div className="flex flex-row items-center justify-between">
@@ -510,61 +545,16 @@ export default function TrafficStream({
 
                 <div className="flex-1" /> {/* Spacer */}
 
-                {/* Config Controls */}
-                {!showConfig ? (
-                    <div className="flex gap-2">
-                        <Button 
-                            variant="ghost" 
-                            size="icon" 
-                            className="h-9 w-9"
-                            onClick={() => setShowModuleConfig(!showModuleConfig)}
-                            title="Module Settings"
-                        >
-                            <Settings2 className="h-4 w-4" />
-                        </Button>
-                        <Button 
-                            variant="secondary" 
-                            size="sm" 
-                            className="h-9"
-                            onClick={startLaneConfig}
-                            disabled={!isStreaming && status !== "Live" && !previewUrl}
-                        >
-                            Configure Lanes
-                        </Button>
-                        <Button 
-                            variant="secondary" 
-                            size="sm" 
-                            className="h-9"
-                            onClick={() => setShowZoneConfig(true)}
-                            disabled={!isStreaming && status !== "Live" && !previewUrl}
-                        >
-                            Configure Zones
-                        </Button>
-                    </div>
-                ) : (
-                    <div className="flex gap-2">
-                        <Button 
-                            variant="ghost" 
-                            size="sm"
-                            className="h-9 text-red-500 hover:text-red-600 hover:bg-red-50"
-                            onClick={cancelLaneConfig}
-                        >
-                            Cancel
-                        </Button>
-                        <Button 
-                            size="sm" 
-                            className="h-9 bg-green-600 hover:bg-green-700 text-white"
-                            onClick={handleSaveLanes}
-                        >
-                            Save Config
-                        </Button>
-                    </div>
-                )}
+
+
+
             </div>
             
         </CardHeader>
         <CardContent>
-            <div className="relative aspect-video bg-black rounded-lg overflow-hidden border border-zinc-800">
+            <div className="flex gap-4">
+            {/* Video Container */}
+            <div className="flex-1 relative aspect-video bg-black rounded-lg overflow-hidden border border-zinc-800">
             {/* Preview Image */}
             {!isStreaming && status !== "Live" && !error && previewUrl && (
                 <img 
@@ -604,17 +594,8 @@ export default function TrafficStream({
                 </div>
             )}
             
-            {/* Lane Config Overlay */}
-            {showConfig && dimensions.width > 0 && (
-                <LaneConfig 
-                    width={dimensions.width} 
-                    height={dimensions.height}
-                    lanes={lanes}
-                    onLanesChange={setLanes}
-                />
-            )}
-            {/* Zone Config Overlay (Multi-Zone) */}
-            {showZoneConfig && dimensions.width > 0 && (
+            {/* Zone Config Overlay - Always show when zones exist */}
+            {zones.length > 0 && dimensions.width > 0 && (
                 <MultiZoneConfig
                     width={dimensions.width}
                     height={dimensions.height}
@@ -624,6 +605,40 @@ export default function TrafficStream({
                     onSelectZone={setSelectedZoneId}
                 />
             )}
+            {/* Lane Config Overlay - Always show when lanes exist */}
+            {lanes.length > 0 && dimensions.width > 0 && (
+                <LaneConfig 
+                    width={dimensions.width} 
+                    height={dimensions.height}
+                    lanes={lanes}
+                    onLanesChange={setLanes}
+                />
+            )}
+            {/* Plate Line Config Overlay - Always show when plate line exists */}
+            {plateLine && dimensions.width > 0 && (
+                <PlateLineOverlay
+                    width={dimensions.width}
+                    height={dimensions.height}
+                    plateLine={plateLine}
+                    onPlateLineChange={setPlateLine}
+                />
+            )}
+
+            {/* Settings Panel Sidebar - Always visible */}
+            </div>
+            <SettingsPanel
+                lanes={lanes}
+                onLanesChange={setLanes}
+                onSaveLanes={handleSaveLanes}
+                zones={zones}
+                onZonesChange={setZones}
+                onSaveZones={handleSaveZones}
+                plateLine={plateLine}
+                onPlateLineChange={setPlateLine}
+                onSavePlateLine={handleSavePlateLine}
+                width={dimensions.width || 640}
+                height={dimensions.height || 360}
+            />
             </div>
 
             <div className="flex justify-center mt-4 mb-2">
@@ -677,35 +692,11 @@ export default function TrafficStream({
         </CardContent>
         </Card>
         
-        {/* Lane Config Panel */}
-        {showConfig && (
-             <LaneConfigPanel
-                 lanes={lanes}
-                 onLanesChange={setLanes}
-                 onSave={handleSaveLanes}
-                 onCancel={cancelLaneConfig}
-                 width={dimensions.width}
-                 height={dimensions.height}
-             />
-        )}
 
-        {/* Zone Config Panel */}
-        {showZoneConfig && (
-             <ZoneConfigPanel
-                 zones={zones}
-                 onZonesChange={setZones}
-                 onSave={handleSaveZones}
-                 onCancel={cancelZoneConfig}
-                 width={dimensions.width}
-                 height={dimensions.height}
-             />
-        )}
 
         
-        {/* Module Config Panel */}
-        {showModuleConfig && (
-            <ModuleConfigPanel onClose={() => setShowModuleConfig(false)} />
-        )}
+        {/* Settings Panel */}
+
     </div>
   );
 }

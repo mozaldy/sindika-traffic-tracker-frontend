@@ -45,13 +45,8 @@ export function LaneConfig({ width, height, lanes, onLanesChange }: LaneConfigPr
         return line === 'a' ? colors.a : colors.b;
     };
 
-    const handleMouseDown = (laneIdx: number, line: 'a' | 'b', point: 0 | 1) => (e: React.MouseEvent) => {
-        e.preventDefault();
-        setDragTarget({ laneIdx, line, point });
-        setSelectedLane(laneIdx);
-    };
-
-    const handleMouseMove = (e: React.MouseEvent) => {
+    // Global drag handlers
+    const handleWindowMouseMove = (e: MouseEvent) => {
         if (!dragTarget || !svgRef.current) return;
 
         const rect = svgRef.current.getBoundingClientRect();
@@ -75,8 +70,32 @@ export function LaneConfig({ width, height, lanes, onLanesChange }: LaneConfigPr
         onLanesChange(newLanes);
     };
 
-    const handleMouseUp = () => {
+    const handleWindowMouseUp = () => {
         setDragTarget(null);
+    };
+
+    // Effect to attach/detach listeners
+    useEffect(() => {
+        if (dragTarget) {
+            window.addEventListener('mousemove', handleWindowMouseMove);
+            window.addEventListener('mouseup', handleWindowMouseUp);
+        }
+        return () => {
+            window.removeEventListener('mousemove', handleWindowMouseMove);
+            window.removeEventListener('mouseup', handleWindowMouseUp);
+        };
+    }, [dragTarget, lanes]); // Depend on lanes to keep closure fresh? Better: use refs or functional state update if lanes change often. 
+    // Actually, onLanesChange is a prop. If we use lanes from closure, we might miss updates if useEffect doesn't re-run.
+    // Ideally, dragging doesn't change `lanes` reference mid-drag unless we are setting it.
+    // The implementation above re-binds listeners on every render if dragTarget is set, which is fine but slightly inefficient.
+    // A better way is using a ref for `lanes`. However, to keep it simple and safe given the current code structure:
+    // We can rely on React state updates.
+
+    const handleMouseDown = (laneIdx: number, line: 'a' | 'b', point: 0 | 1) => (e: React.MouseEvent) => {
+        e.preventDefault(); 
+        e.stopPropagation(); // Stop propagation to prevent hitting elements below
+        setDragTarget({ laneIdx, line, point });
+        setSelectedLane(laneIdx);
     };
 
     const addLane = () => {
@@ -117,14 +136,11 @@ export function LaneConfig({ width, height, lanes, onLanesChange }: LaneConfigPr
             {/* SVG Overlay for drawing lines */}
             <svg
                 ref={svgRef}
-                className="absolute inset-0 w-full h-full cursor-crosshair pointer-events-auto"
+                className="absolute inset-0 w-full h-full pointer-events-none"
                 style={{ width, height }}
-                onMouseMove={handleMouseMove}
-                onMouseUp={handleMouseUp}
-                onMouseLeave={handleMouseUp}
             >
                 {lanes.map((lane, laneIdx) => (
-                    <g key={laneIdx} opacity={selectedLane === null || selectedLane === laneIdx ? 1 : 0.4}>
+                    <g key={laneIdx} opacity={selectedLane === null || selectedLane === laneIdx ? 1 : 0.4} className="pointer-events-auto">
                         {/* Line A (Entry) */}
                         <line
                             x1={lane.line_a[0]} y1={lane.line_a[1]}
@@ -132,6 +148,7 @@ export function LaneConfig({ width, height, lanes, onLanesChange }: LaneConfigPr
                             stroke={getColor(laneIdx, 'a')}
                             strokeWidth={3}
                             strokeDasharray={selectedLane === laneIdx ? "none" : "5,5"}
+                            className="pointer-events-auto cursor-grab"
                         />
                         {/* Line A Label */}
                         <text
@@ -141,6 +158,7 @@ export function LaneConfig({ width, height, lanes, onLanesChange }: LaneConfigPr
                             fontSize="12"
                             textAnchor="middle"
                             fontWeight="bold"
+                            className="pointer-events-auto select-none"
                         >
                             {lane.name} A
                         </text>
@@ -149,14 +167,14 @@ export function LaneConfig({ width, height, lanes, onLanesChange }: LaneConfigPr
                             cx={lane.line_a[0]} cy={lane.line_a[1]} r={8}
                             fill={getColor(laneIdx, 'a')}
                             stroke="white" strokeWidth={2}
-                            className="cursor-grab"
+                            className="cursor-grab pointer-events-auto"
                             onMouseDown={handleMouseDown(laneIdx, 'a', 0)}
                         />
                         <circle
                             cx={lane.line_a[2]} cy={lane.line_a[3]} r={8}
                             fill={getColor(laneIdx, 'a')}
                             stroke="white" strokeWidth={2}
-                            className="cursor-grab"
+                            className="cursor-grab pointer-events-auto"
                             onMouseDown={handleMouseDown(laneIdx, 'a', 1)}
                         />
 
@@ -167,6 +185,7 @@ export function LaneConfig({ width, height, lanes, onLanesChange }: LaneConfigPr
                             stroke={getColor(laneIdx, 'b')}
                             strokeWidth={3}
                             strokeDasharray={selectedLane === laneIdx ? "none" : "5,5"}
+                            className="pointer-events-auto cursor-grab"
                         />
                         {/* Line B Label */}
                         <text
@@ -176,6 +195,7 @@ export function LaneConfig({ width, height, lanes, onLanesChange }: LaneConfigPr
                             fontSize="12"
                             textAnchor="middle"
                             fontWeight="bold"
+                            className="pointer-events-auto select-none"
                         >
                             {lane.name} B
                         </text>
@@ -184,14 +204,14 @@ export function LaneConfig({ width, height, lanes, onLanesChange }: LaneConfigPr
                             cx={lane.line_b[0]} cy={lane.line_b[1]} r={8}
                             fill={getColor(laneIdx, 'b')}
                             stroke="white" strokeWidth={2}
-                            className="cursor-grab"
+                            className="cursor-grab pointer-events-auto"
                             onMouseDown={handleMouseDown(laneIdx, 'b', 0)}
                         />
                         <circle
                             cx={lane.line_b[2]} cy={lane.line_b[3]} r={8}
                             fill={getColor(laneIdx, 'b')}
                             stroke="white" strokeWidth={2}
-                            className="cursor-grab"
+                            className="cursor-grab pointer-events-auto"
                             onMouseDown={handleMouseDown(laneIdx, 'b', 1)}
                         />
                     </g>

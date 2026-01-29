@@ -155,14 +155,33 @@ export function TrafficLog() {
                                             {event.speed_kmh.toFixed(1)} <span className="text-xs text-muted-foreground">km/h</span>
                                         </TableCell>
                                         <TableCell>
-                                            <div className="flex items-center gap-2" title={`Angle: ${event.direction_deg?.toFixed(0)}°`}>
-                                                <span className="text-lg font-bold text-zinc-700 dark:text-zinc-300">
-                                                    {event.direction_symbol || "?"}
-                                                </span>
-                                                <span className="text-xs text-zinc-500">
-                                                    {typeof event.direction_deg === 'number' ? event.direction_deg.toFixed(0) : '0'}°
-                                                </span>
-                                            </div>
+                                            {event.direction_symbol ? (
+                                                <div className="flex items-center gap-2" title={`Angle: ${event.direction_deg?.toFixed(0)}°`}>
+                                                    <span className="text-lg font-bold text-zinc-700 dark:text-zinc-300">
+                                                        {event.direction_symbol}
+                                                    </span>
+                                                </div>
+                                            ) : (
+                                                <span className="text-zinc-400">-</span>
+                                            )}
+                                        </TableCell>
+                                        <TableCell>
+                                            {event.plate_image_path ? (
+                                                <div 
+                                                    className="h-10 w-20 bg-zinc-100 rounded overflow-hidden relative group cursor-pointer"
+                                                    onClick={() => event.plate_image_path && setSelectedImage(`/captures/${event.plate_image_path.split('/').pop()}`)}
+                                                >
+                                                    <img 
+                                                        src={`/captures/${event.plate_image_path.split('/').pop()}`} 
+                                                        alt="License plate"
+                                                        className="w-full h-full object-cover transition-transform group-hover:scale-110"
+                                                    />
+                                                </div>
+                                            ) : event.license_plate ? (
+                                                <span className="font-mono text-xs">{event.license_plate}</span>
+                                            ) : (
+                                                <span className="text-xs text-zinc-400">-</span>
+                                            )}
                                         </TableCell>
                                         <TableCell className="text-xs text-zinc-500 max-w-[150px] truncate">
                                             {event.video_source}
