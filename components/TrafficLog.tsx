@@ -12,6 +12,8 @@ interface TrafficEvent {
     speed_kmh: number;
     direction_deg: number;
     direction_symbol?: string;
+    entry_edge?: number;
+    exit_edge?: number;
     crossing_start?: number;
     crossing_end?: number;
     image_path?: string;
@@ -160,6 +162,11 @@ export function TrafficLog() {
                                                     <span className="text-lg font-bold text-zinc-700 dark:text-zinc-300">
                                                         {event.direction_symbol}
                                                     </span>
+                                                    {event.entry_edge && event.exit_edge && (
+                                                        <span className="text-xs font-mono text-blue-600 dark:text-blue-400">
+                                                            {event.entry_edge}→{event.exit_edge}
+                                                        </span>
+                                                    )}
                                                 </div>
                                             ) : (
                                                 <span className="text-zinc-400">-</span>
